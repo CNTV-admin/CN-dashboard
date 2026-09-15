@@ -458,7 +458,14 @@ document.getElementById("salesRefreshBtn").addEventListener("click", ()=>loadSal
 // ════════════════════════════════════════════
 const recvCache = { rows: [] };
 
-function fmtDateInput(d){ return d.toISOString().slice(0,10); }
+function fmtDateInput(d){
+  // ★ toISOString()은 UTC로 변환해서 한국시간 기준 날짜가 하루 밀릴 수 있어
+  //   로컬 날짜 구성요소를 그대로 조합한다.
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
 function setRecvRange(start, end){
   document.getElementById("recvStart").value = fmtDateInput(start);
   document.getElementById("recvEnd").value = fmtDateInput(end);
