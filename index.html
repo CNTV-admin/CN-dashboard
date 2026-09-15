@@ -397,8 +397,19 @@ function renderSalesTable(){
   });
 }
 
+// 같은 유형+채널+거래처가 여러 줄이면 하나로 합산 (예: 랩사수수료의 RICH/엠크로스)
+function aggregateByVendor(items){
+  const map = new Map();
+  items.forEach(r=>{
+    const key = `${r.type}||${r.channel}||${r.brand}`;
+    if(!map.has(key)) map.set(key, {type:r.type, channel:r.channel, brand:r.brand, amount:0});
+    map.get(key).amount += toNum(r.amount);
+  });
+  return [...map.values()];
+}
+
 function renderSalesDrilldown(row, month){
-  const items = drilldownRows(row, month).sort((a,b)=>b.amount-a.amount);
+  const items = aggregateByVendor(drilldownRows(row, month)).sort((a,b)=>b.amount-a.amount);
   const total = items.reduce((s,r)=>s+toNum(r.amount),0);
   const body = items.length ? items.map(r=>`<tr>
       <td><span class="chip chip-${r.type}">${r.type}</span></td>
