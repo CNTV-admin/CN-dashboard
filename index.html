@@ -566,6 +566,14 @@ async function loadRecvData(mode, forceRefresh){
   const endDate = document.getElementById("recvEnd").value;
   if(!startDate || !endDate){ showError("recvErrorBox", "시작일과 종료일을 선택해주세요."); return; }
 
+  // ★ fetch가 끝나기 전까지 이전 기간 데이터가 화면에 남아있지 않도록 즉시 비운다
+  document.getElementById("recvTableWrap").innerHTML = `<div class="loading-row">불러오는 중…</div>`;
+  document.getElementById("recvDetailPanel").innerHTML = `
+    <div class="panel-empty">
+      <div class="big">불러오는 중…</div>
+      <div class="small">잠시만 기다려주세요</div>
+    </div>`;
+
   setDot("recvDot","recvStatusText","loading");
   document.getElementById("recvPeriodLabel").textContent = `(${startDate} ~ ${endDate})`;
   try {
