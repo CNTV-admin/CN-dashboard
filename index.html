@@ -184,8 +184,11 @@
           </div>
           <div class="filter-divider"></div>
           <div class="filter-group">
-            <span class="filter-label">최신화</span>
-            <button class="btn primary" id="recvRefreshBtn">외상매출금 조회</button>
+            <span class="filter-label">조회</span>
+            <div style="display:flex;gap:8px;">
+              <button class="btn primary" id="recvArBtn">외상매출금 조회</button>
+              <button class="btn" id="recvNoteBtn">받을어음 조회</button>
+            </div>
           </div>
         </div>
         <div class="preset-row" id="recvPresets">
@@ -201,8 +204,8 @@
       <div id="recvErrorBox"></div>
 
       <div class="panel">
-        <div class="panel-title">조회 기간 현황 <span id="recvPeriodLabel" style="font-weight:600;color:var(--muted);font-size:12px"></span></div>
-        <div id="recvTableWrap"><div class="loading-row">기간을 선택하고 "외상매출금 조회"를 눌러주세요</div></div>
+        <div class="panel-title"><span id="recvTableTitle">조회 기간 현황</span> <span id="recvPeriodLabel" style="font-weight:600;color:var(--muted);font-size:12px"></span></div>
+        <div id="recvTableWrap"><div class="loading-row">기간을 선택하고 버튼을 눌러주세요</div></div>
       </div>
 
       <div class="panel" id="recvDetailPanel">
@@ -456,7 +459,10 @@ document.getElementById("salesRefreshBtn").addEventListener("click", ()=>loadSal
 // ════════════════════════════════════════════
 //  매출채권 탭
 // ════════════════════════════════════════════
-const recvCache = { rows: [] };
+const recvCache = { rows: [], mode: "ar" };
+const RECV_TITLE = { ar: "외상매출금 조회 기간 현황", note: "받을어음 조회 기간 현황" };
+const RECV_EMPTY_MSG = { ar: "조회 기간에 외상매출금이 없습니다", note: "조회 기간에 받을어음이 없습니다" };
+const RECV_LAST_COL_LABEL = { ar: "외상매출금 잔액", note: "받을어음 잔액" };
 
 function fmtDateInput(d){
   // ★ toISOString()은 UTC로 변환해서 한국시간 기준 날짜가 하루 밀릴 수 있어
@@ -495,18 +501,22 @@ document.querySelectorAll(".preset-btn").forEach(btn=>{
 });
 
 function renderRecvTable(){
-  const rows = [...recvCache.rows].sort((a,b)=>b.total-a.total);
-  const total = rows.reduce((s,r)=>s+toNum(r.total),0);
+  const rows = [...recvCache.rows].sort((a,b)=>b.balance-a.balance);
+  const sum = (key) => rows.reduce((s,r)=>s+toNum(r[key]),0);
+
   const body = rows.length ? rows.map(r=>`<tr>
       <td><button class="vendor-btn" data-vendor="${encodeURIComponent(r.display)}">${r.display}</button></td>
-      <td class="num">${won(r.total)}</td>
-    </tr>`).join("") : `<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:24px 0">조회 기간에 외상매출금이 없습니다</td></tr>`;
+      <td class="num">${won(r.prevBalance)}</td>
+      <td class="num">${won(r.increase)}</td>
+      <td class="num">${won(r.decrease)}</td>
+      <td class="num">${won(r.balance)}</td>
+    </tr>`).join("") : `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px 0">${RECV_EMPTY_MSG[recvCache.mode]}</td></tr>`;
 
   document.getElementById("recvTableWrap").innerHTML = `
     <table>
-      <thead><tr><th>거래처명</th><th>잔액</th></tr></thead>
+      <thead><tr><th>거래처명</th><th>전기(월)이월</th><th>증가</th><th>감소</th><th>${RECV_LAST_COL_LABEL[recvCache.mode]}</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr><td>합계</td><td class="num">${won(total)}</td></tr></tfoot>
+      <tfoot><tr><td>합계</td><td class="num">${won(sum("prevBalance"))}</td><td class="num">${won(sum("increase"))}</td><td class="num">${won(sum("decrease"))}</td><td class="num">${won(sum("balance"))}</td></tr></tfoot>
     </table>`;
 
   document.querySelectorAll(".vendor-btn").forEach(btn=>{
@@ -514,26 +524,44 @@ function renderRecvTable(){
   });
 }
 
+// 통장 거래내역 형태: 전기이월 행 + 날짜순 증가/감소 이벤트 + 누적 잔액
 function renderRecvDrilldown(display){
   const entry = recvCache.rows.find(r=>r.display===display);
   if(!entry) return;
-  const periods = [...(entry.periods||[])].sort((a,b)=>(a.year-b.year)||(a.month-b.month));
-  const body = periods.map(p=>`<tr>
-      <td>${entry.display}</td>
-      <td>${p.year}.${String(p.month).padStart(2,"0")}</td>
-      <td class="num">${won(p.amount)}</td>
-    </tr>`).join("");
+
+  let running = toNum(entry.prevBalance);
+  const rowsHtml = [`<tr class="subtotal">
+      <td>전기이월</td><td class="num">-</td><td class="num">-</td><td class="num">${won(running)}</td>
+    </tr>`];
+
+  [...(entry.events||[])].sort((a,b)=>a.date.localeCompare(b.date)).forEach(ev=>{
+    if(ev.type === "증가") running += toNum(ev.amount); else running -= toNum(ev.amount);
+    rowsHtml.push(`<tr>
+      <td>${ev.date}</td>
+      <td class="num">${ev.type==="증가" ? won(ev.amount) : "-"}</td>
+      <td class="num">${ev.type==="감소" ? won(ev.amount) : "-"}</td>
+      <td class="num">${won(running)}</td>
+    </tr>`);
+  });
+
+  if(!entry.events || !entry.events.length){
+    rowsHtml.push(`<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px 0">조회 기간 중 변동 내역이 없습니다</td></tr>`);
+  }
 
   document.getElementById("recvDetailPanel").innerHTML = `
-    <div class="panel-title">${display} 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(청구년월별)</span></div>
+    <div class="panel-title">${display} 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(${recvCache.mode==="note"?"받을어음":"외상매출금"} 거래이력)</span></div>
     <table>
-      <thead><tr><th>거래처</th><th>청구년월</th><th>잔액</th></tr></thead>
-      <tbody>${body}</tbody>
-      <tfoot><tr><td colspan="2">합계</td><td class="num">${won(entry.total)}</td></tr></tfoot>
+      <thead><tr><th>날짜</th><th>증가</th><th>감소</th><th>잔액</th></tr></thead>
+      <tbody>${rowsHtml.join("")}</tbody>
     </table>`;
 }
 
-async function loadRecvData(forceRefresh){
+async function loadRecvData(mode, forceRefresh){
+  recvCache.mode = mode;
+  document.getElementById("recvArBtn").classList.toggle("primary", mode==="ar");
+  document.getElementById("recvNoteBtn").classList.toggle("primary", mode==="note");
+  document.getElementById("recvTableTitle").textContent = RECV_TITLE[mode];
+
   const startDate = document.getElementById("recvStart").value;
   const endDate = document.getElementById("recvEnd").value;
   if(!startDate || !endDate){ showError("recvErrorBox", "시작일과 종료일을 선택해주세요."); return; }
@@ -541,9 +569,9 @@ async function loadRecvData(forceRefresh){
   setDot("recvDot","recvStatusText","loading");
   document.getElementById("recvPeriodLabel").textContent = `(${startDate} ~ ${endDate})`;
   try {
-    const params = {startDate, endDate};
+    const params = {startDate, endDate, kind: mode};
     if(forceRefresh) params.refresh = 1;
-    const data = await apiFetch("receivableRange", params);
+    const data = await apiFetch("receivableLedger", params);
     recvCache.rows = data.rows || [];
     setDot("recvDot","recvStatusText","ok");
     showError("recvErrorBox", null);
@@ -559,7 +587,8 @@ async function loadRecvData(forceRefresh){
     document.getElementById("recvTableWrap").innerHTML = `<div class="loading-row">데이터를 불러오지 못했습니다. 다시 시도해주세요.</div>`;
   }
 }
-document.getElementById("recvRefreshBtn").addEventListener("click", ()=>loadRecvData(true));
+document.getElementById("recvArBtn").addEventListener("click", ()=>loadRecvData("ar", true));
+document.getElementById("recvNoteBtn").addEventListener("click", ()=>loadRecvData("note", true));
 
 // ════════════════════════════════════════════
 //  초기 로드
