@@ -434,7 +434,7 @@ function renderSalesDrilldown(row, month){
   document.getElementById("salesDetailPanel").innerHTML = `
     <div class="panel-title">${row.label} · ${month}월 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(거래처별, 공급가액)</span></div>
     <table>
-      <thead><tr><th>유형</th><th>채널</th><th>거래처</th><th>매출금액</th></tr></thead>
+      <thead><tr><th style="text-align:left">유형</th><th style="text-align:left">채널</th><th style="text-align:left">거래처</th><th>매출금액</th></tr></thead>
       <tbody>${body}</tbody>
       <tfoot><tr><td colspan="3">합계</td><td class="num">${won(total)}</td></tr></tfoot>
     </table>`;
@@ -508,6 +508,7 @@ document.querySelectorAll(".preset-btn[data-preset-month]").forEach(btn=>{
     const y = getRefYear();
     const m = Number(btn.dataset.presetMonth) - 1;   // 0-based
     setRecvRange(new Date(y,m,1), new Date(y,m+1,0));
+    loadRecvData(recvCache.mode, true);   // ★ 현재 선택된 모드(외상매출금/받을어음)로 즉시 조회
   });
 });
 document.querySelectorAll(".preset-btn[data-preset]").forEach(btn=>{
@@ -520,6 +521,7 @@ document.querySelectorAll(".preset-btn[data-preset]").forEach(btn=>{
       case "thisYear":   start = new Date(y,0,1); end = new Date(y,12,0); break;
     }
     setRecvRange(start, end);
+    loadRecvData(recvCache.mode, true);   // ★ 현재 선택된 모드(외상매출금/받을어음)로 즉시 조회
   });
 });
 
@@ -557,7 +559,7 @@ function renderRecvDrilldown(display){
 
   document.getElementById("recvDetailPanel").innerHTML = `
     <div class="panel-title">${display} 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(${recvCache.mode==="note"?"청구월 · 받을어음":"청구날짜 · 외상매출금"}, 미입금분)</span></div>
-    <table style="table-layout:fixed;width:100%;max-width:480px;">
+    <table style="table-layout:fixed;width:100%;">
       <colgroup><col style="width:55%"><col style="width:45%"></colgroup>
       <thead><tr><th>청구날짜</th><th>금액</th></tr></thead>
       <tbody>${body}</tbody>
