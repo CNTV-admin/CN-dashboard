@@ -71,6 +71,8 @@
   tr.subtotal td{background:#F1F4F9;font-weight:800;border-bottom:1.5px solid #D7DEE8;}
   tr.clickable-row{cursor:default;}
   .num{text-align:right;font-variant-numeric:tabular-nums;font-family:'Inter',sans-serif;}
+  .num-center{text-align:center;font-variant-numeric:tabular-nums;font-family:'Inter',sans-serif;}
+  .num-left{text-align:left;font-variant-numeric:tabular-nums;font-family:'Inter',sans-serif;}
   .cell-btn{background:none;border:none;padding:2px 4px;font:inherit;font-variant-numeric:tabular-nums;font-family:'Inter',sans-serif;color:var(--text);cursor:pointer;border-radius:5px;}
   .cell-btn:hover{background:var(--blue-soft);color:var(--blue);}
   .cell-btn.zero{color:#C7CEDA;}
@@ -376,8 +378,8 @@ function renderSalesTable(){
   const checked = getCheckedChannels();
   const rows = buildSubjectRows().filter(r => r.sep || checked.includes(r.ch));
 
-  let thead = `<tr><th>과목</th><th>계</th>`;
-  for(let m=1;m<=12;m++) thead += `<th>${m}월</th>`;
+  let thead = `<tr><th>과목</th><th class="num-center">계</th>`;
+  for(let m=1;m<=12;m++) thead += `<th class="num-center">${m}월</th>`;
   thead += `</tr>`;
 
   let body = "";
@@ -389,11 +391,11 @@ function renderSalesTable(){
     const rowClass = row.kind === "fee" ? "fee-row" : "";
     body += `<tr class="${rowClass}">
       <td class="row-label">${row.label}</td>
-      <td class="num">${won(rowTotal)}</td>
+      <td class="num-center">${won(rowTotal)}</td>
       ${monthVals.map((v,i)=>{
         const m = i+1;
-        if(!v) return `<td class="num"><span class="cell-btn zero">-</span></td>`;
-        return `<td class="num"><button class="cell-btn" data-row='${JSON.stringify(row).replace(/'/g,"&apos;")}' data-month="${m}">${won(v)}</button></td>`;
+        if(!v) return `<td class="num-center"><span class="cell-btn zero">-</span></td>`;
+        return `<td class="num-center"><button class="cell-btn" data-row='${JSON.stringify(row).replace(/'/g,"&apos;")}' data-month="${m}">${won(v)}</button></td>`;
       }).join("")}
     </tr>`;
   });
@@ -428,15 +430,15 @@ function renderSalesDrilldown(row, month){
       <td><span class="chip chip-${r.type}">${r.type}</span></td>
       <td><span class="chip chip-${r.channel}">${r.channel}</span></td>
       <td>${r.brand}</td>
-      <td class="num">${won(r.amount)}</td>
+      <td class="num-left">${won(r.amount)}</td>
     </tr>`).join("") : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px 0">내역 없음</td></tr>`;
 
   document.getElementById("salesDetailPanel").innerHTML = `
     <div class="panel-title">${row.label} · ${month}월 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(거래처별, 공급가액)</span></div>
     <table>
-      <thead><tr><th style="text-align:left">유형</th><th style="text-align:left">채널</th><th style="text-align:left">거래처</th><th>매출금액</th></tr></thead>
+      <thead><tr><th style="text-align:left">유형</th><th style="text-align:left">채널</th><th style="text-align:left">거래처</th><th style="text-align:left">매출금액</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr><td colspan="3">합계</td><td class="num">${won(total)}</td></tr></tfoot>
+      <tfoot><tr><td colspan="3">합계</td><td class="num-left">${won(total)}</td></tr></tfoot>
     </table>`;
 
   // ★ 클릭 즉시 상세내역 위치로 화면 스크롤
@@ -554,16 +556,16 @@ function renderRecvDrilldown(display){
   const items = [...(entry.items||[])].sort((a,b)=>a.date.localeCompare(b.date));
   const body = items.length ? items.map(it=>`<tr>
       <td>${it.date}</td>
-      <td class="num">${won(it.amount)}</td>
+      <td class="num-left">${won(it.amount)}</td>
     </tr>`).join("") : `<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:16px 0">미입금 청구 내역이 없습니다</td></tr>`;
 
   document.getElementById("recvDetailPanel").innerHTML = `
-    <div class="panel-title">${display} 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(${recvCache.mode==="note"?"청구월 · 받을어음":"청구날짜 · 외상매출금"}, 미입금분)</span></div>
+    <div class="panel-title">${display} 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(청구년월 · ${recvCache.mode==="note"?"받을어음":"외상매출금"}, 미입금분)</span></div>
     <table style="table-layout:fixed;width:100%;">
       <colgroup><col style="width:55%"><col style="width:45%"></colgroup>
-      <thead><tr><th>청구날짜</th><th>금액</th></tr></thead>
+      <thead><tr><th>청구년월</th><th style="text-align:left">금액</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr><td>합계</td><td class="num">${won(entry.balance)}</td></tr></tfoot>
+      <tfoot><tr><td>합계</td><td class="num-left">${won(entry.balance)}</td></tr></tfoot>
     </table>`;
 
   // ★ 클릭 즉시 상세내역 위치로 화면 스크롤
