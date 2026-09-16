@@ -549,13 +549,18 @@ function renderRecvTable(){
 }
 
 // 청구날짜/금액 상세내역 — 거래처마다 표 너비가 달라지지 않도록 table-layout:fixed + 고정 컬럼폭 사용
+function fmtYearMonth(ym){
+  const [y, m] = ym.split("-");
+  return `${y}년 ${Number(m)}월`;
+}
+
 function renderRecvDrilldown(display){
   const entry = recvCache.rows.find(r=>r.display===display);
   if(!entry) return;
 
   const items = [...(entry.items||[])].sort((a,b)=>a.date.localeCompare(b.date));
   const body = items.length ? items.map(it=>`<tr>
-      <td>${it.date}</td>
+      <td>${fmtYearMonth(it.date)}</td>
       <td class="num-left">${won(it.amount)}</td>
     </tr>`).join("") : `<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:16px 0">미입금 청구 내역이 없습니다</td></tr>`;
 
