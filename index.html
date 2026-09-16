@@ -300,7 +300,8 @@ document.querySelectorAll(".side-item").forEach(el=>{
 // ════════════════════════════════════════════
 //  매출 탭
 // ════════════════════════════════════════════
-const salesCache = { subRows: [], adRevenueRows: [], adFeeRows: [] };
+const salesCache = { subRows: [], adRevenueRows: [], adFeeRows: [], dojone: { found: false, data: {} } };
+const REVIEW_TOLERANCE = 5;   // ±5원까지는 오차로 보지 않고 일치로 처리
 
 (function initSalesYearSelect(){
   const sel = document.getElementById("salesYear");
@@ -327,16 +328,16 @@ document.querySelectorAll("#salesChannels input").forEach(el=>{
 function buildSubjectRows(){
   const rows = [];
   CHANNEL_ORDER.forEach(ch=>{
-    rows.push({ch, label:`${ch}_IPTV`,           kind:"sub", type:"IPTV"});
-    rows.push({ch, label:`${ch}_SO`,             kind:"sub", type:"SO"});
-    rows.push({ch, label:`${ch}_위성`,           kind:"sub", type:"위성"});
-    rows.push({ch, label:`${ch}_광고(일반+기타)`, kind:"ad",  category:"일반"});
-    rows.push({ch, label:`${ch}_인포`,            kind:"ad",  category:"인포"});
-    rows.push({ch, label: ch==="CC" ? `${ch}_기타(프로그램판매 포함)` : `${ch}_기타`, kind:"sub", type:"기타(그 외)"});
+    rows.push({ch, label:`${ch}_IPTV`,           kind:"sub", type:"IPTV",        compareKey:`${ch}_IPTV`});
+    rows.push({ch, label:`${ch}_SO`,             kind:"sub", type:"SO",          compareKey:`${ch}_SO`});
+    rows.push({ch, label:`${ch}_위성`,           kind:"sub", type:"위성",        compareKey:`${ch}_위성`});
+    rows.push({ch, label:`${ch}_광고(일반+기타)`, kind:"ad",  category:"일반",    compareKey:`${ch}_광고`});
+    rows.push({ch, label:`${ch}_인포`,            kind:"ad",  category:"인포",    compareKey:`${ch}_인포`});
+    rows.push({ch, label: ch==="CC" ? `${ch}_기타(프로그램판매 포함)` : `${ch}_기타`, kind:"sub", type:"기타(그 외)", compareKey:`${ch}_기타`});
   });
   rows.push({sep:true});
   CHANNEL_ORDER.forEach(ch=>{
-    rows.push({ch, label:`${ch}_광고대행수수료`, kind:"fee"});
+    rows.push({ch, label:`${ch}_광고대행수수료`, kind:"fee", compareKey:`${ch}_대행수수료`});
   });
   return rows;
 }
@@ -377,25 +378,52 @@ function drilldownRows(row, month){
 function renderSalesTable(){
   const checked = getCheckedChannels();
   const rows = buildSubjectRows().filter(r => r.sep || checked.includes(r.ch));
+  const dojoneFound = salesCache.dojone && salesCache.dojone.found;
+  const dojoneData = (salesCache.dojone && salesCache.dojone.data) || {};
 
-  let thead = `<tr><th>과목</th><th class="num-center">계</th>`;
+  let thead = `<tr><th>과목</th><th class="num-center">검토</th><th class="num-center">계</th>`;
   for(let m=1;m<=12;m++) thead += `<th class="num-center">${m}월</th>`;
   thead += `</tr>`;
 
   let body = "";
   rows.forEach(row=>{
-    if(row.sep){ body += `<tr class="sep-row"><td colspan="14"></td></tr>`; return; }
+    if(row.sep){ body += `<tr class="sep-row"><td colspan="15"></td></tr>`; return; }
     const monthVals = [];
     for(let m=1;m<=12;m++) monthVals.push(monthAmount(row, m));
     const rowTotal = monthVals.reduce((s,v)=>s+v,0);
     const rowClass = row.kind === "fee" ? "fee-row" : "";
+
+    // ── 더존 값과 비교(±5원 허용) — 더존 데이터가 없는 월은 비교 대상에서 제외 ──
+    const dojoneVals = dojoneData[row.compareKey] || null;
+    const mismatchMonths = new Set();
+    let hasAnyCompared = false;
+    if (dojoneVals) {
+      monthVals.forEach((v, i) => {
+        const dv = dojoneVals[i];
+        if (dv === null || dv === undefined) return;   // 더존에 아직 없는 월은 비교 안 함
+        hasAnyCompared = true;
+        if (Math.abs(v - dv) > REVIEW_TOLERANCE) mismatchMonths.add(i+1);
+      });
+    }
+    let reviewMark = "";
+    if (dojoneFound && dojoneVals && hasAnyCompared) {
+      reviewMark = mismatchMonths.size
+        ? `<span style="color:var(--red);font-weight:800;">X</span>`
+        : `<span style="color:var(--text);font-weight:800;">O</span>`;
+    } else {
+      reviewMark = `<span style="color:#C7CEDA;">-</span>`;
+    }
+
     body += `<tr class="${rowClass}">
       <td class="row-label">${row.label}</td>
+      <td class="num-center">${reviewMark}</td>
       <td class="num-center">${won(rowTotal)}</td>
       ${monthVals.map((v,i)=>{
         const m = i+1;
-        if(!v) return `<td class="num-center"><span class="cell-btn zero">-</span></td>`;
-        return `<td class="num-center"><button class="cell-btn" data-row='${JSON.stringify(row).replace(/'/g,"&apos;")}' data-month="${m}">${won(v)}</button></td>`;
+        const isMismatch = mismatchMonths.has(m);
+        const cellStyle = isMismatch ? ` style="color:var(--red);font-weight:700;"` : "";
+        if(!v) return `<td class="num-center"><span class="cell-btn zero"${cellStyle}>-</span></td>`;
+        return `<td class="num-center"><button class="cell-btn" data-row='${JSON.stringify(row).replace(/'/g,"&apos;")}' data-month="${m}"${cellStyle}>${won(v)}</button></td>`;
       }).join("")}
     </tr>`;
   });
@@ -451,13 +479,15 @@ async function loadSalesData(forceRefresh){
   try {
     const params = {year};
     if(forceRefresh) params.refresh = 1;
-    const [subData, adData] = await Promise.all([
+    const [subData, adData, dojoneData] = await Promise.all([
       apiFetch("subYear", params),
       apiFetch("adYear", params),
+      apiFetch("dojoneMonthly", params).catch(()=>({found:false, data:{}})),   // ★ 더존 조회 실패해도 매출표 자체는 보여줌
     ]);
     salesCache.subRows = subData.rows || [];
     salesCache.adRevenueRows = adData.revenueRows || [];
     salesCache.adFeeRows = adData.feeRows || [];
+    salesCache.dojone = { found: !!dojoneData.found, data: dojoneData.data || {} };
     setDot("salesDot","salesStatusText","ok");
     showError("salesErrorBox", null);
     renderSalesTable();
