@@ -479,6 +479,11 @@ async function loadSalesData(forceRefresh){
 
   // ★ fetch가 끝나기 전까지 이전 데이터가 화면에 남아있지 않도록 즉시 비운다
   document.getElementById("salesTableWrap").innerHTML = `<div class="loading-row">불러오는 중…</div>`;
+  document.getElementById("salesDetailPanel").innerHTML = `
+    <div class="panel-empty">
+      <div class="big">위 표의 월 숫자를 클릭하면 상세 내역이 여기에 표시됩니다</div>
+      <div class="small">과목 × 월 셀을 클릭해보세요</div>
+    </div>`;
 
   setDot("salesDot","salesStatusText","loading");
   try {
