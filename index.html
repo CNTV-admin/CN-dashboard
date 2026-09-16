@@ -153,6 +153,7 @@
       </div>
 
       <div id="salesErrorBox"></div>
+      <div id="dojoneErrorBox"></div>
 
       <div class="panel">
         <div class="panel-title">월별 현황 <span style="font-weight:600;color:var(--muted);font-size:12px">(공급가액 기준 · 숫자를 클릭하면 아래에 거래처별 상세가 표시됩니다)</span></div>
@@ -483,15 +484,23 @@ async function loadSalesData(forceRefresh){
   try {
     const params = {year};
     if(forceRefresh) params.refresh = 1;
-    const [subData, adData, dojoneData] = await Promise.all([
+    const [subData, adData, dojoneResult] = await Promise.all([
       apiFetch("subYear", params),
       apiFetch("adYear", params),
-      apiFetch("dojoneMonthly", params).catch(()=>({found:false, data:{}})),   // ★ 더존 조회 실패해도 매출표 자체는 보여줌
+      apiFetch("dojoneMonthly", params).then(d=>({ok:true, d})).catch(err=>({ok:false, err})),
     ]);
     salesCache.subRows = subData.rows || [];
     salesCache.adRevenueRows = adData.revenueRows || [];
     salesCache.adFeeRows = adData.feeRows || [];
-    salesCache.dojone = { found: !!dojoneData.found, data: dojoneData.data || {} };
+
+    if(dojoneResult.ok){
+      salesCache.dojone = { found: !!dojoneResult.d.found, data: dojoneResult.d.data || {} };
+      showError("dojoneErrorBox", null);
+    } else {
+      salesCache.dojone = { found: false, data: {} };
+      showError("dojoneErrorBox", `더존 검토 데이터를 불러오지 못했습니다: ${dojoneResult.err.message}`);
+    }
+
     setDot("salesDot","salesStatusText","ok");
     showError("salesErrorBox", null);
     renderSalesTable();
