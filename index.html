@@ -475,6 +475,10 @@ function renderSalesDrilldown(row, month){
 
 async function loadSalesData(forceRefresh){
   const year = Number(document.getElementById("salesYear").value);
+
+  // ★ fetch가 끝나기 전까지 이전 데이터가 화면에 남아있지 않도록 즉시 비운다
+  document.getElementById("salesTableWrap").innerHTML = `<div class="loading-row">불러오는 중…</div>`;
+
   setDot("salesDot","salesStatusText","loading");
   try {
     const params = {year};
