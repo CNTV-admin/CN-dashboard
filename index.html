@@ -584,6 +584,8 @@ function renderRecvTable(){
   const rows = [...recvCache.rows].sort((a,b)=>b.balance-a.balance);
   const total = rows.reduce((s,r)=>s+toNum(r.balance),0);
   const dojoneOn = !!recvCache.dojoneFound;
+  const dojoneTotal = dojoneOn ? rows.reduce((s,r)=>s+toNum(r.dojoneBalance||0),0) : 0;
+  const diffTotal   = dojoneOn ? rows.reduce((s,r)=>s+toNum(r.diff||0),0) : 0;
 
   const body = rows.length ? rows.map(r=>{
       const nameCell = r.isDojoneOnly
@@ -592,9 +594,10 @@ function renderRecvTable(){
       const dojoneCell = dojoneOn
         ? (r.dojoneBalance === null || r.dojoneBalance === undefined ? `<span style="color:#C7CEDA;">-</span>` : won(r.dojoneBalance))
         : `<span style="color:#C7CEDA;">-</span>`;
+      // ★ 더존 값이 없으면(0으로 간주) 대시보드 잔액이 그대로 차액으로 빨갛게 표시됨
       let diffCell = `<span style="color:#C7CEDA;">-</span>`;
-      if(dojoneOn && r.diff !== null && r.diff !== undefined){
-        diffCell = r.diff === 0
+      if(dojoneOn){
+        diffCell = !r.diff
           ? "-"
           : `<span style="color:var(--red);font-weight:700;">${won(r.diff)}</span>`;
       }
@@ -606,11 +609,14 @@ function renderRecvTable(){
       </tr>`;
     }).join("") : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px 0">${RECV_EMPTY_MSG[recvCache.mode]}</td></tr>`;
 
+  const footDojone = dojoneOn ? won(dojoneTotal) : "";
+  const footDiff = dojoneOn ? (diffTotal ? `<span style="color:var(--red);font-weight:800;">${won(diffTotal)}</span>` : "-") : "";
+
   document.getElementById("recvTableWrap").innerHTML = `
     <table>
       <thead><tr><th>거래처명</th><th>${RECV_LAST_COL_LABEL[recvCache.mode]}</th><th>더존 검토</th><th>차액</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr><td>합계</td><td class="num">${won(total)}</td><td></td><td></td></tr></tfoot>
+      <tfoot><tr><td>합계</td><td class="num">${won(total)}</td><td class="num">${footDojone}</td><td class="num">${footDiff}</td></tr></tfoot>
     </table>
     ${dojoneOn ? "" : `<div style="margin-top:10px;font-size:11.5px;color:var(--muted);">※ 이 종료일이 속한 달(${document.getElementById("recvEnd").value.slice(0,7)})의 더존 파일을 찾지 못해 검토 없이 대시보드 값만 표시합니다.</div>`}`;
 
