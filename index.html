@@ -523,7 +523,7 @@ document.getElementById("salesRefreshBtn").addEventListener("click", ()=>loadSal
 // ════════════════════════════════════════════
 //  매출채권 탭
 // ════════════════════════════════════════════
-const recvCache = { rows: [], mode: "ar" };
+const recvCache = { rows: [], mode: "ar", dojoneFound: false };
 const RECV_TITLE = { ar: "외상매출금 조회 기간 현황", note: "받을어음 조회 기간 현황" };
 const RECV_EMPTY_MSG = { ar: "조회 기간에 외상매출금이 없습니다", note: "조회 기간에 받을어음이 없습니다" };
 const RECV_LAST_COL_LABEL = { ar: "외상매출금 잔액", note: "받을어음 잔액" };
@@ -583,18 +583,36 @@ document.querySelectorAll(".preset-btn[data-preset]").forEach(btn=>{
 function renderRecvTable(){
   const rows = [...recvCache.rows].sort((a,b)=>b.balance-a.balance);
   const total = rows.reduce((s,r)=>s+toNum(r.balance),0);
+  const dojoneOn = !!recvCache.dojoneFound;
 
-  const body = rows.length ? rows.map(r=>`<tr>
-      <td><button class="vendor-btn" data-vendor="${encodeURIComponent(r.display)}">${r.display}</button></td>
-      <td class="num">${won(r.balance)}</td>
-    </tr>`).join("") : `<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:24px 0">${RECV_EMPTY_MSG[recvCache.mode]}</td></tr>`;
+  const body = rows.length ? rows.map(r=>{
+      const nameCell = r.isDojoneOnly
+        ? `<span style="color:var(--red);font-weight:700;">${r.display}</span>`
+        : `<button class="vendor-btn" data-vendor="${encodeURIComponent(r.display)}">${r.display}</button>`;
+      const dojoneCell = dojoneOn
+        ? (r.dojoneBalance === null || r.dojoneBalance === undefined ? `<span style="color:#C7CEDA;">-</span>` : won(r.dojoneBalance))
+        : `<span style="color:#C7CEDA;">-</span>`;
+      let diffCell = `<span style="color:#C7CEDA;">-</span>`;
+      if(dojoneOn && r.diff !== null && r.diff !== undefined){
+        diffCell = r.diff === 0
+          ? "-"
+          : `<span style="color:var(--red);font-weight:700;">${won(r.diff)}</span>`;
+      }
+      return `<tr>
+        <td>${nameCell}</td>
+        <td class="num">${won(r.balance)}</td>
+        <td class="num">${dojoneCell}</td>
+        <td class="num">${diffCell}</td>
+      </tr>`;
+    }).join("") : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px 0">${RECV_EMPTY_MSG[recvCache.mode]}</td></tr>`;
 
   document.getElementById("recvTableWrap").innerHTML = `
     <table>
-      <thead><tr><th>거래처명</th><th>${RECV_LAST_COL_LABEL[recvCache.mode]}</th></tr></thead>
+      <thead><tr><th>거래처명</th><th>${RECV_LAST_COL_LABEL[recvCache.mode]}</th><th>더존 검토</th><th>차액</th></tr></thead>
       <tbody>${body}</tbody>
-      <tfoot><tr><td>합계</td><td class="num">${won(total)}</td></tr></tfoot>
-    </table>`;
+      <tfoot><tr><td>합계</td><td class="num">${won(total)}</td><td></td><td></td></tr></tfoot>
+    </table>
+    ${dojoneOn ? "" : `<div style="margin-top:10px;font-size:11.5px;color:var(--muted);">※ 이 종료일이 속한 달(${document.getElementById("recvEnd").value.slice(0,7)})의 더존 파일을 찾지 못해 검토 없이 대시보드 값만 표시합니다.</div>`}`;
 
   document.querySelectorAll(".vendor-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>renderRecvDrilldown(decodeURIComponent(btn.dataset.vendor)));
@@ -654,6 +672,7 @@ async function loadRecvData(mode, forceRefresh){
     if(forceRefresh) params.refresh = 1;
     const data = await apiFetch("receivableSnapshot", params);
     recvCache.rows = data.rows || [];
+    recvCache.dojoneFound = data.dojoneFound || false;
     setDot("recvDot","recvStatusText","ok");
     showError("recvErrorBox", null);
     renderRecvTable();
