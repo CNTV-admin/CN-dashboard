@@ -69,6 +69,12 @@
   tbody tr:hover{background:#F8FAFD;}
   tr.sep-row td{border-bottom:1.5px solid var(--navy-2);padding:0;height:2px;}
   tr.fee-row td{background:#FBFBFD;}
+  tr.total-row td{background:#EAF0FB;font-weight:800;border-bottom:1.5px solid #C9D6EE;}
+  tr.total-row .row-label{color:var(--navy);}
+  .chk-group.months{flex-wrap:wrap;gap:5px;}
+  .chk-group.months .chk-pill{padding:6px 10px;font-size:12px;}
+  th.mon-head{cursor:pointer;}
+  th.mon-head:hover{color:var(--blue);}
   tr.subtotal td{background:#F1F4F9;font-weight:800;border-bottom:1.5px solid #D7DEE8;}
   tr.clickable-row{cursor:default;}
   .num{text-align:right;font-variant-numeric:tabular-nums;font-family:'Inter',sans-serif;}
@@ -136,6 +142,11 @@
         <div class="filter-group">
           <span class="filter-label">기간(년)</span>
           <select id="salesYear"></select>
+        </div>
+        <div class="filter-divider"></div>
+        <div class="filter-group">
+          <span class="filter-label">월</span>
+          <div class="chk-group months" id="salesMonths"></div>
         </div>
         <div class="filter-divider"></div>
         <div class="filter-group">
@@ -304,6 +315,58 @@ document.querySelectorAll(".side-item").forEach(el=>{
 // ════════════════════════════════════════════
 const salesCache = { subRows: [], adRevenueRows: [], adFeeRows: [], dojone: { found: false, data: {} } };
 const REVIEW_TOLERANCE = 5;   // ±5원까지는 오차로 보지 않고 일치로 처리
+let salesFrom = 1, salesTo = 12;   // 표시할 월 범위 (기본 1~12월 = 전체)
+const TOTAL_ROW = { kind:"total", label:"매출액" };
+const isFullRange = () => salesFrom === 1 && salesTo === 12;
+
+(function initSalesMonthControls(){
+  const wrap = document.getElementById("salesMonths");
+  const all = document.createElement("label");
+  all.className = "chk-pill on"; all.id = "salesMonthAll"; all.textContent = "전체";
+  all.addEventListener("click", ()=>setSalesRange(1,12));
+  wrap.appendChild(all);
+  const mkSel = (id, val) => {
+    const sel = document.createElement("select");
+    sel.id = id;
+    for(let m=1;m<=12;m++){
+      const o = document.createElement("option"); o.value = m; o.textContent = m+"월";
+      if(m===val) o.selected = true;
+      sel.appendChild(o);
+    }
+    return sel;
+  };
+  const from = mkSel("salesFrom", 1), to = mkSel("salesTo", 12);
+  const tilde = document.createElement("span");
+  tilde.textContent = "~"; tilde.style.cssText = "font-weight:700;color:var(--muted);align-self:center;";
+  wrap.appendChild(from); wrap.appendChild(tilde); wrap.appendChild(to);
+  from.addEventListener("change", ()=>{
+    let f = Number(from.value), t = salesTo;
+    if(f > t) t = f;                 // 시작월이 종료월보다 늦으면 종료월을 맞춰 올린다
+    setSalesRange(f, t);
+  });
+  to.addEventListener("change", ()=>{
+    let t = Number(to.value), f = salesFrom;
+    if(t < f) f = t;                 // 종료월이 시작월보다 빠르면 시작월을 맞춰 내린다
+    setSalesRange(f, t);
+  });
+})();
+
+function setSalesRange(from, to){
+  salesFrom = from; salesTo = to;
+  document.getElementById("salesFrom").value = from;
+  document.getElementById("salesTo").value = to;
+  document.getElementById("salesMonthAll").classList.toggle("on", isFullRange());
+  renderSalesTable();
+  if(!isFullRange()){
+    renderSalesDrilldown(TOTAL_ROW, {from, to}, true);
+  } else {
+    document.getElementById("salesDetailPanel").innerHTML = `
+      <div class="panel-empty">
+        <div class="big">위 표의 월 숫자를 클릭하면 상세 내역이 여기에 표시됩니다</div>
+        <div class="small">과목 × 월 셀을 클릭해보세요</div>
+      </div>`;
+  }
+}
 
 (function initSalesYearSelect(){
   const sel = document.getElementById("salesYear");
@@ -329,6 +392,8 @@ document.querySelectorAll("#salesChannels input").forEach(el=>{
 // 과목 행 정의: 상세 18개 + 구분선 + 대행수수료 3개
 function buildSubjectRows(){
   const rows = [];
+  rows.push({kind:"total", label:"매출액"});
+  rows.push({sep:true});
   CHANNEL_ORDER.forEach(ch=>{
     rows.push({ch, label:`${ch}_IPTV`,           kind:"sub", type:"IPTV",        compareKey:`${ch}_IPTV`});
     rows.push({ch, label:`${ch}_SO`,             kind:"sub", type:"SO",          compareKey:`${ch}_SO`});
@@ -341,10 +406,23 @@ function buildSubjectRows(){
   CHANNEL_ORDER.forEach(ch=>{
     rows.push({ch, label:`${ch}_광고대행수수료`, kind:"fee", compareKey:`${ch}_대행수수료`});
   });
+  rows.push({kind:"feeTotal", label:"광고대행수수료 합계"});
   return rows;
 }
 
+// 합계 줄(매출액 / 광고대행수수료 합계)이 더하는 대상 과목 줄 (체크된 채널만)
+function memberRows(kind){
+  const checked = getCheckedChannels();
+  return buildSubjectRows().filter(r=>{
+    if(r.sep || !checked.includes(r.ch)) return false;
+    return kind === "total" ? (r.kind==="sub" || r.kind==="ad") : r.kind==="fee";
+  });
+}
+
 function monthAmount(row, month){
+  if(row.kind === "total" || row.kind === "feeTotal"){
+    return memberRows(row.kind).reduce((s,r)=>s+monthAmount(r, month),0);
+  }
   if(row.kind === "sub"){
     return salesCache.subRows
       .filter(r=>r.channel===row.ch && r.type===row.type && r.month===month)
@@ -362,6 +440,9 @@ function monthAmount(row, month){
 }
 
 function drilldownRows(row, month){
+  if(row.kind === "total" || row.kind === "feeTotal"){
+    return memberRows(row.kind).reduce((a,r)=>a.concat(drilldownRows(r, month)), []);
+  }
   if(row.kind === "sub"){
     return salesCache.subRows
       .filter(r=>r.channel===row.ch && r.type===row.type && r.month===month)
@@ -379,28 +460,44 @@ function drilldownRows(row, month){
 
 function renderSalesTable(){
   const checked = getCheckedChannels();
-  const rows = buildSubjectRows().filter(r => r.sep || checked.includes(r.ch));
+  const rows = buildSubjectRows().filter(r => r.sep || r.kind==="total" || r.kind==="feeTotal" || checked.includes(r.ch));
+  const visMonths = []; for(let m=salesFrom; m<=salesTo; m++) visMonths.push(m);
   const dojoneFound = salesCache.dojone && salesCache.dojone.found;
   const dojoneData = (salesCache.dojone && salesCache.dojone.data) || {};
 
-  let thead = `<tr><th>과목</th><th class="num-center">검토</th><th class="num-center">계</th>`;
-  for(let m=1;m<=12;m++) thead += `<th class="num-center">${m}월</th>`;
+  let thead = `<tr><th>과목</th><th class="num-center">검토</th><th class="num-center">${isFullRange() ? "연 계" : "기간 계"}</th>`;
+  visMonths.forEach(m=>{ thead += `<th class="num-center mon-head" data-month="${m}" title="클릭하면 ${m}월만 표시">${m}월</th>`; });
   thead += `</tr>`;
 
   let body = "";
   rows.forEach(row=>{
-    if(row.sep){ body += `<tr class="sep-row"><td colspan="15"></td></tr>`; return; }
+    if(row.sep){ body += `<tr class="sep-row"><td colspan="${3+visMonths.length}"></td></tr>`; return; }
     const monthVals = [];
     for(let m=1;m<=12;m++) monthVals.push(monthAmount(row, m));
-    const rowTotal = monthVals.reduce((s,v)=>s+v,0);
-    const rowClass = row.kind === "fee" ? "fee-row" : "";
+    const rowTotal = monthVals.reduce((s,v,i)=>(i+1>=salesFrom && i+1<=salesTo) ? s+v : s, 0);   // 선택한 기간의 합
+    const rowClass = (row.kind === "fee" || row.kind === "feeTotal") ? "fee-row" : "";
+    const isTotalRow = row.kind === "total" || row.kind === "feeTotal";
 
     // ── 더존 값과 비교(±5원 허용) — 더존 데이터가 없는 월은 비교 대상에서 제외 ──
-    const dojoneVals = dojoneData[row.compareKey] || null;
+    let dojoneVals = dojoneData[row.compareKey] || null;
+    if (isTotalRow) {
+      // 합계 줄: 구성 과목의 더존 값을 월별로 더해 비교 (한 과목이라도 그 월 값이 없으면 그 월은 비교 안 함)
+      const members = memberRows(row.kind);
+      dojoneVals = members.length ? Array.from({length:12}, (_,i)=>{
+        let sum = 0;
+        for (const mr of members) {
+          const arr = dojoneData[mr.compareKey];
+          if (!arr || arr[i] === null || arr[i] === undefined) return null;
+          sum += arr[i];
+        }
+        return sum;
+      }) : null;
+    }
     const mismatchMonths = new Set();
     let hasAnyCompared = false;
     if (dojoneVals) {
       monthVals.forEach((v, i) => {
+        if (i+1 < salesFrom || i+1 > salesTo) return;   // 선택한 기간의 월만 더존과 비교
         const dv = dojoneVals[i];
         if (dv === null || dv === undefined) return;   // 더존에 아직 없는 월은 비교 안 함
         hasAnyCompared = true;
@@ -416,11 +513,11 @@ function renderSalesTable(){
       reviewMark = `<span style="color:#C7CEDA;">-</span>`;
     }
 
-    body += `<tr class="${rowClass}">
+    body += `<tr class="${rowClass}${row.kind==="total" ? " total-row" : ""}">
       <td class="row-label">${row.label}</td>
       <td class="num-center">${reviewMark}</td>
       <td class="num-center">${won(rowTotal)}</td>
-      ${monthVals.map((v,i)=>{
+      ${monthVals.map((v,i)=>({v,i})).filter(o=>o.i+1>=salesFrom && o.i+1<=salesTo).map(({v,i})=>{
         const m = i+1;
         const isMismatch = mismatchMonths.has(m);
         const cellStyle = isMismatch ? ` style="color:var(--red);font-weight:700;"` : "";
@@ -432,6 +529,10 @@ function renderSalesTable(){
 
   document.getElementById("salesTableWrap").innerHTML = `
     <table><thead>${thead}</thead><tbody>${body}</tbody></table>`;
+
+  document.querySelectorAll("#salesTableWrap th.mon-head").forEach(th=>{
+    th.addEventListener("click", ()=>{ const m = Number(th.dataset.month); if(salesFrom!==m || salesTo!==m) setSalesRange(m, m); });
+  });
 
   document.querySelectorAll("#salesTableWrap .cell-btn:not(.zero)").forEach(btn=>{
     btn.addEventListener("click", ()=>{
@@ -453,8 +554,13 @@ function aggregateByVendor(items){
   return [...map.values()];
 }
 
-function renderSalesDrilldown(row, month){
-  const items = aggregateByVendor(drilldownRows(row, month)).sort((a,b)=>b.amount-a.amount);
+function renderSalesDrilldown(row, month, noScroll){
+  const mFrom = typeof month === "number" ? month : month.from;
+  const mTo   = typeof month === "number" ? month : month.to;
+  const monthLabel = mFrom === mTo ? `${mFrom}월` : `${mFrom}월~${mTo}월`;
+  let raw = [];
+  for(let mm=mFrom; mm<=mTo; mm++) raw = raw.concat(drilldownRows(row, mm));
+  const items = aggregateByVendor(raw).sort((a,b)=>b.amount-a.amount);
   const total = items.reduce((s,r)=>s+toNum(r.amount),0);
   const body = items.length ? items.map(r=>`<tr>
       <td><span class="chip chip-${r.type}">${r.type}</span></td>
@@ -464,7 +570,7 @@ function renderSalesDrilldown(row, month){
     </tr>`).join("") : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px 0">내역 없음</td></tr>`;
 
   document.getElementById("salesDetailPanel").innerHTML = `
-    <div class="panel-title">${row.label} · ${month}월 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(거래처별, 공급가액)</span></div>
+    <div class="panel-title">${row.label} · ${monthLabel} 상세내역 <span style="font-weight:600;color:var(--muted);font-size:12px">(거래처별, 공급가액)</span></div>
     <table>
       <thead><tr><th style="text-align:left">유형</th><th style="text-align:left">채널</th><th style="text-align:left">거래처</th><th style="text-align:left">매출금액</th></tr></thead>
       <tbody>${body}</tbody>
@@ -472,7 +578,7 @@ function renderSalesDrilldown(row, month){
     </table>`;
 
   // ★ 클릭 즉시 상세내역 위치로 화면 스크롤
-  document.getElementById("salesDetailPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  if(!noScroll) document.getElementById("salesDetailPanel").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function loadSalesData(forceRefresh){
@@ -510,6 +616,7 @@ async function loadSalesData(forceRefresh){
     setDot("salesDot","salesStatusText","ok");
     showError("salesErrorBox", null);
     renderSalesTable();
+    if(!isFullRange()) renderSalesDrilldown(TOTAL_ROW, {from:salesFrom, to:salesTo}, true);
   } catch(err){
     setDot("salesDot","salesStatusText","error");
     showError("salesErrorBox", err.message);
