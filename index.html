@@ -475,7 +475,7 @@ function renderSalesTable(){
     const monthVals = [];
     for(let m=1;m<=12;m++) monthVals.push(monthAmount(row, m));
     const rowTotal = monthVals.reduce((s,v,i)=>(i+1>=salesFrom && i+1<=salesTo) ? s+v : s, 0);   // 선택한 기간의 합
-    const rowClass = (row.kind === "fee" || row.kind === "feeTotal") ? "fee-row" : "";
+    const rowClass = row.kind === "fee" ? "fee-row" : "";
     const isTotalRow = row.kind === "total" || row.kind === "feeTotal";
 
     // ── 더존 값과 비교(±5원 허용) — 더존 데이터가 없는 월은 비교 대상에서 제외 ──
@@ -513,7 +513,7 @@ function renderSalesTable(){
       reviewMark = `<span style="color:#C7CEDA;">-</span>`;
     }
 
-    body += `<tr class="${rowClass}${row.kind==="total" ? " total-row" : ""}">
+    body += `<tr class="${rowClass}${isTotalRow ? " total-row" : ""}">
       <td class="row-label">${row.label}</td>
       <td class="num-center">${reviewMark}</td>
       <td class="num-center">${won(rowTotal)}</td>
